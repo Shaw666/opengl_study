@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <QThread>
 #define __STDC_CONSTANT_MACROS
@@ -10,6 +10,8 @@ extern "C"
 #include "libavutil/avutil.h"
 #include <libavutil/imgutils.h>
 };
+#include "Direct3D9Render.h"
+#include "D3D9TextureRender.h"
 
 class DecodeAV : public QThread
 {
@@ -17,7 +19,7 @@ private:
 public:
     DecodeAV();
     ~DecodeAV();
-    int init();
+    int init(void* winId);
 
 protected:
     void run();
@@ -31,4 +33,9 @@ private:
     uint8_t *out_buffer;
     AVPacket *packet;
     struct SwsContext *img_convert_ctx;
+
+    // Direct3D9Render* m_pDirectXRender;
+    D3D9TextureRender* m_pDirectXRender;
+    void* m_pWinId;
 };
+

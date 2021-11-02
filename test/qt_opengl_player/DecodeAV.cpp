@@ -1,10 +1,12 @@
-#include "DecodeAV.h"
+﻿#include "DecodeAV.h"
 #include <iostream>
 
 using namespace std;
 
 DecodeAV::DecodeAV()
 {
+    // m_pDirectXRender = new Direct3D9Render();
+    m_pDirectXRender = new D3D9TextureRender();
 }
 
 DecodeAV::~DecodeAV()
@@ -14,15 +16,27 @@ DecodeAV::~DecodeAV()
     avcodec_close(m_pCodecCtx);
     avformat_close_input(&m_pFormatCtx);
     sws_freeContext(img_convert_ctx);
+    delete m_pDirectXRender;
 }
 
-int DecodeAV::init()
+void printFFmpegError(int e)
 {
+    char err_buffer[1024] = {0};
+    av_strerror(e, err_buffer, 1024);
+    cout << err_buffer;
+}
+
+int DecodeAV::init(void *winId)
+{
+    m_pWinId = winId;
+    int ret = 0;
     char inputFilePath[] = "test.mp4";
     m_pFormatCtx = avformat_alloc_context(); //初始化一个AVFormatContext
-    if (avformat_open_input(&m_pFormatCtx, inputFilePath, NULL, NULL) != 0)
+    ret = avformat_open_input(&m_pFormatCtx, inputFilePath, NULL, NULL);
+    if (ret != 0)
     { //打开输入的视频文件
-        printf("Couldn't open input stream.\n");
+        cout << "Couldn't open input stream.";
+        printFFmpegError(ret);
         return -1;
     }
     if (avformat_find_stream_info(m_pFormatCtx, NULL) < 0)
@@ -43,6 +57,7 @@ int DecodeAV::init()
         printf("Didn't find a video stream.\n");
         return -1;
     }
+    m_pDirectXRender->InitD3D((HWND)m_pWinId, m_pFormatCtx->streams[videoindex]->codecpar->width, m_pFormatCtx->streams[videoindex]->codecpar->height);
 
     m_pCodecCtx = avcodec_alloc_context3(nullptr);
     if (!m_pCodecCtx)
@@ -50,18 +65,18 @@ int DecodeAV::init()
         return -1;
     }
     avcodec_parameters_to_context(m_pCodecCtx, m_pFormatCtx->streams[videoindex]->codecpar);
-    // m_pCodecCtx = m_pFormatCtx->streams[videoindex]->codec;
-    // pCodec = avcodec_find_decoder(m_pCodecCtx->codec_id); //查找解码器
-    // if (pCodec == NULL)
-    // {
-    //     printf("Codec not found.\n");
-    //     return -1;
-    // }
-    // if (avcodec_open2(m_pCodecCtx, pCodec, NULL) < 0)
-    // { //打开解码器
-    //     printf("Could not open codec.\n");
-    //     return -1;
-    // }
+    //m_pCodecCtx = m_pFormatCtx->streams[videoindex]->codec;
+    pCodec = avcodec_find_decoder(m_pCodecCtx->codec_id); //查找解码器
+    if (pCodec == NULL)
+    {
+        printf("Codec not found.\n");
+        return -1;
+    }
+    if (avcodec_open2(m_pCodecCtx, pCodec, NULL) < 0)
+    { //打开解码器
+        printf("Could not open codec.\n");
+        return -1;
+    }
 
     pFrame = av_frame_alloc();
     pFrameYUV = av_frame_alloc();
@@ -117,7 +132,8 @@ void DecodeAV::run()
                     else
                     {
                         int height = sws_scale(img_convert_ctx, pFrame->data, pFrame->linesize, 0, m_pCodecCtx->height, pFrameYUV->data, pFrameYUV->linesize);
-                        cout << "decode " << height << endl;
+                        //cout << "decode " << height << endl;
+                        m_pDirectXRender->drawVideo(pFrameYUV->data[0], m_pCodecCtx->width, height);
                     }
                 }
             }
