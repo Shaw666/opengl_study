@@ -1,5 +1,6 @@
 #pragma once
 #include <d3d9.h>
+//渲染rgb
 
 class D3D9TextureRender
 {
@@ -8,7 +9,7 @@ public:
     D3D9TextureRender();
     ~D3D9TextureRender();
     int InitD3D(HWND hwnd, unsigned long lWidth, unsigned long lHeight);
-    bool drawVideo(const void *datam, int pixel_w, int pixel_h);
+    bool drawVideo(const void*, int pixel_w, int pixel_h);
 
 private:
     void Cleanup();
