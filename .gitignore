@@ -13,6 +13,9 @@ _deps
 
 *.exe
 *.zip
+*.yuv
+*.mp4
+*.pdb
 build_64/
 build/
 
