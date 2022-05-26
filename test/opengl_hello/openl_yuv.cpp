@@ -105,6 +105,7 @@ GLFWwindow *window;
 
 void display(void)
 {
+    // 4/6 2/6
     unsigned int len = fread(buf, 1, pixel_w * pixel_h * 3 / 2, infile);
     cout << "read file " << len << endl;
     if (len != pixel_w * pixel_h * 3 / 2)

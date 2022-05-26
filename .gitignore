@@ -16,6 +16,9 @@ _deps
 *.yuv
 *.mp4
 *.pdb
+*.obj
+*.ilk
+
 build_64/
 build/
 
