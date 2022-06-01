@@ -67,7 +67,7 @@
 // #include "glut.h"
 
 // #include <Windows.h>
-#define GLEW_STATIC 
+#define GLEW_STATIC
 #include <GL/glew.h>
 
 // #include <glad/glad.h>
@@ -79,6 +79,43 @@
 #include <string.h>
 #include <string>
 #include <thread>
+
+GLenum glCheckError_(const char *file, int line)
+{
+    std::cout << "check error: " << file << " (" << line << ")" << std::endl;
+    GLenum errorCode;
+    while ((errorCode = glGetError()) != GL_NO_ERROR)
+    {
+        std::string error;
+        switch (errorCode)
+        {
+        case GL_INVALID_ENUM:
+            error = "INVALID_ENUM";
+            break;
+        case GL_INVALID_VALUE:
+            error = "INVALID_VALUE";
+            break;
+        case GL_INVALID_OPERATION:
+            error = "INVALID_OPERATION";
+            break;
+        case GL_STACK_OVERFLOW:
+            error = "STACK_OVERFLOW";
+            break;
+        case GL_STACK_UNDERFLOW:
+            error = "STACK_UNDERFLOW";
+            break;
+        case GL_OUT_OF_MEMORY:
+            error = "OUT_OF_MEMORY";
+            break;
+        case GL_INVALID_FRAMEBUFFER_OPERATION:
+            error = "INVALID_FRAMEBUFFER_OPERATION";
+            break;
+        }
+        std::cout << error << " | " << file << " (" << line << ")" << std::endl;
+    }
+    return errorCode;
+}
+#define glCheckError() glCheckError_(__FILE__, __LINE__)
 
 // Select one of the Texture mode (Set '1'):
 #define TEXTURE_DEFAULT 0
@@ -103,6 +140,10 @@ GLuint textureUniformY, textureUniformU, textureUniformV;
 
 GLFWwindow *window;
 
+GLenum err;
+
+    unsigned int VBO, VAO, EBO;
+
 void display(void)
 {
     // 4/6 2/6
@@ -110,21 +151,21 @@ void display(void)
     cout << "read file " << len << endl;
     if (len != pixel_w * pixel_h * 3 / 2)
     {
+        cout << "read failed " << len << endl;
         // Loop
         fseek(infile, 0, SEEK_SET);
         fread(buf, 1, pixel_w * pixel_h * 3 / 2, infile);
     }
     // Clear
-    glClearColor(0.0, 255, 0.0, 0.0);
+    glClearColor(0.0, 0.0, 0.0, 1);
     glClear(GL_COLOR_BUFFER_BIT);
     // Y
     //
+    glShadeModel(GL_FLAT);
     glActiveTexture(GL_TEXTURE0);
 
     glBindTexture(GL_TEXTURE_2D, id_y);
-
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, pixel_w, pixel_h, 0, GL_RED, GL_UNSIGNED_BYTE, plane[0]);
-
     glUniform1i(textureUniformY, 0);
     // U
     glActiveTexture(GL_TEXTURE1);
@@ -138,12 +179,18 @@ void display(void)
     glUniform1i(textureUniformV, 2);
 
     // Draw
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    // glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     // Show
     // Double
+    glBindVertexArray(VAO);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
     glfwSwapBuffers(window);
     // Single
     // glFlush();
+    GLenum err = glGetError();
+    fprintf(stderr, "gl error : %d \n", err);
+    // glfwSwapBuffers(window);
+    // SwapBuffers(window);
 }
 
 // void timeFunc(int value)
@@ -163,10 +210,61 @@ void display(void)
 //     s[len] = 0;
 //     return s;
 // }
-
+// 自动加引号   b站的源码
+#define GET_STR(x) #x
 // Init Shader
+
 void InitShaders()
 {
+    float vertices[] = {
+        0.5,
+        0.5,
+        0.0,
+        1.0,
+        0.0,
+        0.5,
+        -0.5,
+        0.0,
+        1.0,
+        1.0,
+        -0.5,
+        -0.5,
+        0.0,
+        0.0,
+        1.0,
+        -0.5,
+        0.5,
+        0.0,
+        0.0,
+        0.0,
+    };
+
+    unsigned int indices[] = {
+        0, 1, 3,
+        1, 2, 3};
+    // clang-format on
+
+
+
+    glGenVertexArrays(1, &VAO);
+    glGenBuffers(1, &VBO);
+    glGenBuffers(1, &EBO);
+    glBindVertexArray(VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+    glBufferData(
+        GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), 0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1,
+                          3,
+                          GL_FLOAT,
+                          GL_FALSE,
+                          5 * sizeof(float),
+                          (void *)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+    err = glCheckError();
 
     std::string vsh_str =
         "attribute vec4 vertexIn;\n"
@@ -213,9 +311,11 @@ void InitShaders()
     glCompileShader(v);
     // Debug
     glGetShaderiv(v, GL_COMPILE_STATUS, &vertCompiled);
+    printf("v complile flag: %d\n", vertCompiled);
+
     glCompileShader(f);
     glGetShaderiv(f, GL_COMPILE_STATUS, &fragCompiled);
-
+    printf("f complile flag: %d\n", fragCompiled);
     // Program: Step1
     p = glCreateProgram();
     // Program: Step2
@@ -228,68 +328,67 @@ void InitShaders()
     glLinkProgram(p);
     // Debug
     glGetProgramiv(p, GL_LINK_STATUS, &linked);
+    printf("link flag: %d\n", fragCompiled);
     // Program: Step4
     glUseProgram(p);
+    err = glCheckError();
+
+    glDeleteShader(v);
+    glDeleteShader(f);
+    err = glCheckError();
+    // #if TEXTURE_ROTATE
+    //     static const GLfloat vertexVertices[] = {
+    //         -1.0f,
+    //         -0.5f,
+    //         0.5f,
+    //         -1.0f,
+    //         -0.5f,
+    //         1.0f,
+    //         1.0f,
+    //         0.5f,
+    //     };
+    // #else
+    //     static const GLfloat vertexVertices[] = {
+    //         -1.0f,
+    //         -1.0f,
+    //         1.0f,
+    //         -1.0f,
+    //         -1.0f,
+    //         1.0f,
+    //         1.0f,
+    //         1.0f,
+    //     };
+    // #endif
+
+    //     // #if TEXTURE_HALF
+    //     //     static const GLfloat textureVertices[] = {
+    //     //         0.0f,
+    //     //         1.0f,
+    //     //         0.5f,
+    //     //         1.0f,
+    //     //         0.0f,
+    //     //         0.0f,
+    //     //         0.5f,
+    //     //         0.0f,
+    //     //     };
+    //     // #else
+    //     static const GLfloat textureVertices[] = {
+    //         0.0f,
+    //         1.0f,
+    //         1.0f,
+    //         1.0f,
+    //         0.0f,
+    //         0.0f,
+    //         1.0f,
+    //         0.0f,
+    //     };
+    //     // #endif
+    //     // Set Arrays
 
     // Get Uniform Variables Location
     textureUniformY = glGetUniformLocation(p, "tex_y");
     textureUniformU = glGetUniformLocation(p, "tex_u");
     textureUniformV = glGetUniformLocation(p, "tex_v");
-
-#if TEXTURE_ROTATE
-    static const GLfloat vertexVertices[] = {
-        -1.0f,
-        -0.5f,
-        0.5f,
-        -1.0f,
-        -0.5f,
-        1.0f,
-        1.0f,
-        0.5f,
-    };
-#else
-    static const GLfloat vertexVertices[] = {
-        -1.0f,
-        -1.0f,
-        1.0f,
-        -1.0f,
-        -1.0f,
-        1.0f,
-        1.0f,
-        1.0f,
-    };
-#endif
-
-    // #if TEXTURE_HALF
-    //     static const GLfloat textureVertices[] = {
-    //         0.0f,
-    //         1.0f,
-    //         0.5f,
-    //         1.0f,
-    //         0.0f,
-    //         0.0f,
-    //         0.5f,
-    //         0.0f,
-    //     };
-    // #else
-    static const GLfloat textureVertices[] = {
-        0.0f,
-        1.0f,
-        1.0f,
-        1.0f,
-        0.0f,
-        0.0f,
-        1.0f,
-        0.0f,
-    };
-    // #endif
-    // Set Arrays
-    glVertexAttribPointer(ATTRIB_VERTEX, 2, GL_FLOAT, 0, 0, vertexVertices);
-    // Enable it
-    glEnableVertexAttribArray(ATTRIB_VERTEX);
-    glVertexAttribPointer(ATTRIB_TEXTURE, 2, GL_FLOAT, 0, 0, textureVertices);
-    glEnableVertexAttribArray(ATTRIB_TEXTURE);
-
     // Init Texture
     glGenTextures(1, &id_y);
     glBindTexture(GL_TEXTURE_2D, id_y);
@@ -311,12 +410,33 @@ void InitShaders()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    GLuint vao = 0;
+    glGenVertexArrays(1, &vao);
+    glBindVertexArray(vao);
+
+    err = glCheckError();
+}
+
+//窗口大小变化时，重新设置视口
+void framebuff_size_callback(GLFWwindow *window, int width, int height)
+{
+    glViewport(0, 0, width, height);
+}
+
+//处理输入
+void process_input_callabck(GLFWwindow *window, int key, int scancode, int action, int mods)
+{
+    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+    {
+        glfwSetWindowShouldClose(window, true);
+    }
 }
 
 int main(int argc, char *argv[])
 {
     // Open YUV420P file
-    if ((infile = fopen("test_1920x1080420p.yuv", "rb")) == NULL)
+    if ((infile = fopen("../../test_1920x1080420p.yuv", "rb")) == NULL)
     {
         printf("cannot open this file\n");
         return -1;
@@ -349,18 +469,27 @@ int main(int argc, char *argv[])
     }
 
     glfwMakeContextCurrent(window);
+    glfwSetKeyCallback(window, process_input_callabck);
+    glfwSetFramebufferSizeCallback(window, framebuff_size_callback);
 
+    glewExperimental = true; // Needed for core profile
     if (glewInit() != GLEW_OK)
     {
         return -1;
     }
-
+    err = glGetError();
+    fprintf(stderr, "gl error : %d \n", err);
     InitShaders();
-
+    err = glCheckError();
+    if (err != GL_NO_ERROR)
+        return -1;
     while (1)
     {
         display();
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        //检查有没有触发什么事件（键盘输入、鼠标移动等)、窗口改变
+        glfwPollEvents();
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(66));
     }
 
     return 0;

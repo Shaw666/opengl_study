@@ -18,6 +18,7 @@ _deps
 *.pdb
 *.obj
 *.ilk
+*.exp
 
 build_64/
 build/
@@ -41,3 +42,6 @@ bld/
 
 .vscode/
 .qt_for_python/
+/glew-2.1.0
+/glfw-3.3.7
+out/
