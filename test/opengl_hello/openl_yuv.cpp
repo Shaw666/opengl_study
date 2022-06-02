@@ -142,7 +142,7 @@ GLFWwindow *window;
 
 GLenum err;
 
-    unsigned int VBO, VAO, EBO;
+unsigned int VBO, VAO, EBO;
 
 void display(void)
 {
@@ -161,7 +161,7 @@ void display(void)
     glClear(GL_COLOR_BUFFER_BIT);
     // Y
     //
-    glShadeModel(GL_FLAT);
+    // glShadeModel(GL_FLAT);
     glActiveTexture(GL_TEXTURE0);
 
     glBindTexture(GL_TEXTURE_2D, id_y);
@@ -178,17 +178,19 @@ void display(void)
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, pixel_w / 2, pixel_h / 2, 0, GL_RED, GL_UNSIGNED_BYTE, plane[2]);
     glUniform1i(textureUniformV, 2);
 
+    glUseProgram(p);
+    glBindVertexArray(VAO); // seeing as we only have a single VAO there's no need to bind it every time, but we'll do so to keep things a bit more organized
     // Draw
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
     // glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     // Show
     // Double
-    glBindVertexArray(VAO);
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    // glBindVertexArray(VAO);
+    // glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
     glfwSwapBuffers(window);
     // Single
     // glFlush();
-    GLenum err = glGetError();
-    fprintf(stderr, "gl error : %d \n", err);
+    // glCheckError();
     // glfwSwapBuffers(window);
     // SwapBuffers(window);
 }
@@ -216,56 +218,6 @@ void display(void)
 
 void InitShaders()
 {
-    float vertices[] = {
-        0.5,
-        0.5,
-        0.0,
-        1.0,
-        0.0,
-        0.5,
-        -0.5,
-        0.0,
-        1.0,
-        1.0,
-        -0.5,
-        -0.5,
-        0.0,
-        0.0,
-        1.0,
-        -0.5,
-        0.5,
-        0.0,
-        0.0,
-        0.0,
-    };
-
-    unsigned int indices[] = {
-        0, 1, 3,
-        1, 2, 3};
-    // clang-format on
-
-
-
-    glGenVertexArrays(1, &VAO);
-    glGenBuffers(1, &VBO);
-    glGenBuffers(1, &EBO);
-    glBindVertexArray(VAO);
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-    glBufferData(
-        GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), 0);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1,
-                          3,
-                          GL_FLOAT,
-                          GL_FALSE,
-                          5 * sizeof(float),
-                          (void *)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-    err = glCheckError();
-
     std::string vsh_str =
         "attribute vec4 vertexIn;\n"
         "attribute vec2 textureIn;\n"
@@ -336,54 +288,41 @@ void InitShaders()
     glDeleteShader(v);
     glDeleteShader(f);
     err = glCheckError();
-    // #if TEXTURE_ROTATE
-    //     static const GLfloat vertexVertices[] = {
-    //         -1.0f,
-    //         -0.5f,
-    //         0.5f,
-    //         -1.0f,
-    //         -0.5f,
-    //         1.0f,
-    //         1.0f,
-    //         0.5f,
-    //     };
-    // #else
-    //     static const GLfloat vertexVertices[] = {
-    //         -1.0f,
-    //         -1.0f,
-    //         1.0f,
-    //         -1.0f,
-    //         -1.0f,
-    //         1.0f,
-    //         1.0f,
-    //         1.0f,
-    //     };
-    // #endif
+    // set up vertex data (and buffer(s)) and configure vertex attributes
+    // ------------------------------------------------------------------
+    float vertices[] = {
+        // positions          // texture coords
+        0.5f, 0.5f, 0.0f, 1.0f, 0.0f,   // top right
+        0.5f, -0.5f, 0.0f, 1.0f, 1.0f,  // bottom right
+        -0.5f, -0.5f, 0.0f, 0.0f, 1.0f, // bottom left
+        -0.5f, 0.5f, 0.0f, 0.0f, 0.0f   // top left
+    };
 
-    //     // #if TEXTURE_HALF
-    //     //     static const GLfloat textureVertices[] = {
-    //     //         0.0f,
-    //     //         1.0f,
-    //     //         0.5f,
-    //     //         1.0f,
-    //     //         0.0f,
-    //     //         0.0f,
-    //     //         0.5f,
-    //     //         0.0f,
-    //     //     };
-    //     // #else
-    //     static const GLfloat textureVertices[] = {
-    //         0.0f,
-    //         1.0f,
-    //         1.0f,
-    //         1.0f,
-    //         0.0f,
-    //         0.0f,
-    //         1.0f,
-    //         0.0f,
-    //     };
-    //     // #endif
-    //     // Set Arrays
+    unsigned int indices[] = {
+        0, 1, 3, // first triangle
+        1, 2, 3  // second triangle
+    };
+
+    glGenVertexArrays(1, &VAO);
+    glGenBuffers(1, &VBO);
+    glGenBuffers(1, &EBO);
+
+    glBindVertexArray(VAO);
+
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+
+    // position attribute
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *)0);
+    glEnableVertexAttribArray(0);
+
+    // texture coord attribute
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+    err = glCheckError();
 
     // Get Uniform Variables Location
     textureUniformY = glGetUniformLocation(p, "tex_y");
@@ -410,11 +349,6 @@ void InitShaders()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-    GLuint vao = 0;
-    glGenVertexArrays(1, &vao);
-    glBindVertexArray(vao);
-
     err = glCheckError();
 }
 

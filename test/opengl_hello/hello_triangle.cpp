@@ -3,6 +3,8 @@
 
 #include <iostream>
 
+// cl.exe /Zi /EHsc /nologo /IC:\test\opengl_study\include /IC:\test\opengl_study\libs\glad\include /DYNAMICBASE opengl32.lib C:/test/opengl_study/libs/glfw3dll.lib /Fe: C:\test\opengl_study\test\opengl_hello\out\out.exe C:\test\opengl_study\libs\glad\src\glad.c hello_triangle.cpp
+
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void processInput(GLFWwindow *window);
 
