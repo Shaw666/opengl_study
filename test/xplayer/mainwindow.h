@@ -1,8 +1,8 @@
-#ifndef MAINWINDOW_H
+﻿#ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
 #include <QMainWindow>
-
+#include "decodeAV.h"
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
@@ -17,5 +17,6 @@ public:
 
 private:
     Ui::MainWindow *ui;
+    std::list<decodeAV*> m_listdecodeAV;
 };
 #endif // MAINWINDOW_H

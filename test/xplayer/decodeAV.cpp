@@ -98,22 +98,6 @@ void decodeAV::run()
         if (kFrameSize != len)
             continue;
 		m_pXOpenGlWidget->pushFrame(unipData.get(), kFrameSize);
-        // if(getAVFrame_YUV_FromFile(m_pFrame, VWidth, VHeight, m_pFile) <= 0)
-        //     break;
-        // VideoFrame frame(m_pFrame->width, m_pFrame->height, VideoFormat((int)AV_PIX_FMT_YUV420P));
-        // frame.setDisplayAspectRatio(getDAR(m_pFrame));
-        // frame.setBits(m_pFrame->data);
-        // frame.setBytesPerLine(m_pFrame->linesize);
-        // in s. TODO: what about AVFrame.pts? av_frame_get_best_effort_timestamp? move to VideoFrame::from(AVFrame*)
-        //        frame.setTimestamp((double)m_pFrame->pkt_pts/1000.0);
-        //        frame.setMetaData(QStringLiteral("avbuf"), QVariant::fromValue(AVFrameBuffersRef(new AVFrameBuffers(m_pFrame))));
-        //        updateColorDetails(&frame);
-        //        if (frame.format().hasPalette()) {
-        //            frame.setMetaData(QStringLiteral("pallete"), QByteArray((const char*)m_pFrame->data[1], 256*4));
-        //        }
-
-        // m_pXOpenGlWidget->receive(frame);
-        //        m_pXOpenGlWidget->Repaint(m_pFrame);
-        msleep(40);
+        msleep(66);
     }
 }

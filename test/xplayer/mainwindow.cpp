@@ -2,7 +2,7 @@
 #include "./ui_mainwindow.h"
 #include <QGridLayout>
 #include "XOpenGlWidget.h"
-#include "decodeAV.h"
+
 
 int row = 1;
 int col = 1;
@@ -11,7 +11,7 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
-    std::list<decodeAV *> m_listdecodeAV;
+
     QGridLayout *pVideoLayout = new QGridLayout(ui->contentWidget);
     for (size_t i = 0; i < row; i++)
     {
@@ -31,5 +31,10 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
+    for (auto&& var : m_listdecodeAV)
+    {
+        var->requestInterruption();
+        var->wait();
+    }
     delete ui;
 }

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.5)
 
-project(xplayer VERSION 0.1 LANGUAGES CXX)
+project(xplayer VERSION 0.1 LANGUAGES CXX C)
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
     set(platform "64" CACHE STRING "")
 else()
@@ -28,9 +28,10 @@ include_directories(${pubincludes})
 link_directories(${publibs})
 
 
-FILE(GLOB SRC_FILES *.cpp *.h)
-# FILE(GLOB TS_FILES ./Translation/*.ts)
-# set(RC_FILES client.qrc)
+FILE(GLOB SRC_FILES ../../libs/glad/src/glad.c *.cpp *.h )
+include_directories(${PUBLIBS}/include)
+link_directories(${PUBLIBS}/libs)
+include_directories(../../libs/glad/include)
 
 set(PROJECT_SOURCES
     ${SRC_FILES}
@@ -40,7 +41,7 @@ add_executable(xplayer WIN32
     ${PROJECT_SOURCES}
 )
 
-target_link_libraries(xplayer PRIVATE Qt${QT_VERSION_MAJOR}::Widgets glew32s opengl32)
+target_link_libraries(xplayer PRIVATE Qt${QT_VERSION_MAJOR}::Widgets opengl32)
 
 set_target_properties(xplayer PROPERTIES
     MACOSX_BUNDLE_GUI_IDENTIFIER my.example.com

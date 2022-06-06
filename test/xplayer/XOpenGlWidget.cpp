@@ -1,6 +1,11 @@
-﻿#include "XOpenGlWidget.h"
+﻿
+#include <windows.h>
+#include <glad/glad.h>
+#include "XOpenGlWidget.h"
 #include <QDebug>
 #include <QTimer>
+#include <QDateTime>
+#include <QSurfaceFormat>
 
 #define A_VER 3
 #define T_VER 4
@@ -44,6 +49,9 @@ GLuint XOpenGlWidget::prog_yuv;
 GLuint XOpenGlWidget::texUniformY;
 GLuint XOpenGlWidget::texUniformU;
 GLuint XOpenGlWidget::texUniformV;
+GLuint XOpenGlWidget::VBO;
+GLuint XOpenGlWidget::VAO;
+GLuint XOpenGlWidget::EBO;
 
 //准备yuv数据
 // ffmpeg -i v1080.mp4 -t 10 -s 240x128 -pix_fmt yuv420p  out240x128.yuv
@@ -51,6 +59,13 @@ GLuint XOpenGlWidget::texUniformV;
 XOpenGlWidget::XOpenGlWidget(QWidget *parent)
 	: QOpenGLWidget(parent)
 {
+	//不设置版本，默认2.0导致qpainter绘制崩溃，建议考虑全局设置
+	QSurfaceFormat format;
+	format.setDepthBufferSize(24);
+	format.setStencilBufferSize(8);
+	format.setVersion(3, 3);
+	format.setProfile(QSurfaceFormat::CoreProfile);
+	setFormat(format);
 	aspect_ratio = 0.0;
 	GLfloat tmp[] = {
 		0.0f,
@@ -62,22 +77,17 @@ XOpenGlWidget::XOpenGlWidget(QWidget *parent)
 		1.0f,
 		0.0f,
 	};
-
-	// reverse
-	/*
-	GLfloat tmp[] = {
-		0.0f, 0.0f,
-		1.0f, 0.0f,
-		0.0f, 1.0f,
-		1.0f, 1.0f,
-	};
-	*/
 	memcpy(textures, tmp, sizeof(GLfloat) * 8);
 	setVertices(1.0);
 	QTimer *playerTimer = new QTimer(this);
 	playerTimer->start(33);
 	connect(playerTimer, &QTimer::timeout, this, [this]()
 			{ update(); });
+	QTimer * p1sTimer = new QTimer(this);
+	connect(p1sTimer, &QTimer::timeout, this, [this]()
+		{ time_str = QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss"); });
+	p1sTimer->start(1000);
+	qDebug() << this->format().version();
 }
 
 XOpenGlWidget::~XOpenGlWidget()
@@ -186,11 +196,11 @@ void XOpenGlWidget::initializeGL()
 	static std::once_flag flag;
 	std::call_once(flag, []()
 				   {
-		if (glewInit() != 0) 
-		{
-			qFatal("glewInit failed");
-			return;
-        } });
+					   if (!gladLoadGL())
+					   {
+						   qDebug() << "Failed to initialize GLAD";
+						   return;
+					   } });
 
 	GLuint vs = glCreateShader(GL_VERTEX_SHADER);
 	GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
@@ -201,44 +211,80 @@ void XOpenGlWidget::initializeGL()
 	glShaderSource(fs, 1, &tString, NULL);
 	glCompileShader(fs);
 
-#ifndef NDEBUG
-	GLint iRet = 0;
-	glGetShaderiv(vs, GL_COMPILE_STATUS, &iRet);
-	qDebug("vs::GL_COMPILE_STATUS=%d", iRet);
-	glGetShaderiv(fs, GL_COMPILE_STATUS, &iRet);
-	qDebug("fs::GL_COMPILE_STATUS=%d", iRet);
-#endif
+	// #ifndef NDEBUG
+	GLint success = 0;
+	char infoLog[512];
+	glGetShaderiv(vs, GL_COMPILE_STATUS, &success);
+	if (!success)
+	{
+		glGetShaderInfoLog(vs, 512, NULL, infoLog);
+		qDebug() << "ERROR::SHADER::VERTEX::COMPILATION_FAILED\n"
+				 << infoLog;
+	}
+	qDebug("vs::GL_COMPILE_STATUS=%d", success);
+	glGetShaderiv(fs, GL_COMPILE_STATUS, &success);
+	qDebug("fs::GL_COMPILE_STATUS=%d", success);
+	// #endif
 
 	prog_yuv = glCreateProgram();
 
 	glAttachShader(prog_yuv, vs);
 	glAttachShader(prog_yuv, fs);
 
-	glBindAttribLocation(prog_yuv, VER_ATTR_VER, "verIn");
-	glBindAttribLocation(prog_yuv, VER_ATTR_TEX, "texIn");
-
 	glLinkProgram(prog_yuv);
-
 	//#ifdef _DEBUG
-	glGetProgramiv(prog_yuv, GL_LINK_STATUS, &iRet);
-	qDebug("prog_yuv=%d GL_LINK_STATUS=%d", prog_yuv, iRet);
+	glGetProgramiv(prog_yuv, GL_LINK_STATUS, &success);
+	if (!success)
+	{
+		glGetProgramInfoLog(prog_yuv, 512, NULL, infoLog);
+		qDebug() << "ERROR::SHADER::PROGRAM::LINKING_FAILED\n"
+				 << infoLog;
+	}
+	qDebug("prog_yuv=%d GL_LINK_STATUS=%d", prog_yuv, success);
 	//#endif
+	glDeleteShader(vs);
+	glDeleteShader(fs);
+	qDebug("loadYUVShader ok");
+	// glValidateProgram(prog_yuv);
 
-	glValidateProgram(prog_yuv);
+	// opengl 3.3的纹理坐标是左上角0，0， 但是之前雷神博客说的是左下角0，0
+	float vertices[] = {
+		// positions          // texture coords
+		1.0f, 1.0f, 0.0f, 1.0f, 0.0f,	// bottom right
+		1.0f, -1.0f, 0.0f, 1.0f, 1.0f,	// top right
+		-1.0f, -1.0f, 0.0f, 0.0f, 1.0f, // bottom left
+		-1.0f, 1.0f, 0.0f, 0.0f, 0.0f	// top left
+	};
+
+	unsigned int indices[] = {
+		0, 1, 3, // first triangle
+		1, 2, 3	 // second triangle
+	};
+
+	glGenVertexArrays(1, &VAO);
+	glGenBuffers(1, &VBO);
+	glGenBuffers(1, &EBO);
+
+	glBindVertexArray(VAO);
+
+	glBindBuffer(GL_ARRAY_BUFFER, VBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+
+	// position attribute
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *)0);
+	glEnableVertexAttribArray(0);
+
+	// texture coord attribute
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *)(3 * sizeof(float)));
+	glEnableVertexAttribArray(1);
+	qDebug("glVertexAttribPointer ok");
 
 	texUniformY = glGetUniformLocation(prog_yuv, "tex_y");
 	texUniformU = glGetUniformLocation(prog_yuv, "tex_u");
 	texUniformV = glGetUniformLocation(prog_yuv, "tex_v");
-
-	qDebug("loadYUVShader ok");
-
-	glVertexAttribPointer(VER_ATTR_VER, 2, GL_FLOAT, GL_FALSE, 0, vertices);
-	glEnableVertexAttribArray(VER_ATTR_VER);
-
-	glVertexAttribPointer(VER_ATTR_TEX, 2, GL_FLOAT, GL_FALSE, 0, textures);
-	glEnableVertexAttribArray(VER_ATTR_TEX);
-
-	qDebug("glVertexAttribPointer ok");
 
 	glGenTextures(3, tex_yuv);
 	for (int i = 0; i < 3; ++i)
@@ -250,103 +296,6 @@ void XOpenGlWidget::initializeGL()
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	}
 	qDebug("inti yuv Texture ok");
-
-	// // mux.lock();
-	// //  初始化opengl (QOpenGLFunctions继承)函数
-	// initializeOpenGLFunctions(); // 这个必须加上去
-
-	// // program 加在shader （顶点和片元）脚本
-	// // 片元（像素）
-	// qDebug() << program.addShaderFromSourceCode(QGLShader::Fragment, tString); // QGLShader::Fragment
-
-	// // 顶点shader
-	// qDebug() << program.addShaderFromSourceCode(QGLShader::Vertex, vString);
-
-	// //设置顶点坐标的变量
-	// program.bindAttributeLocation("vertexIn", A_VER);
-
-	// // 设置材质坐标
-	// program.bindAttributeLocation("textureIn", T_VER);
-
-	// // 编译shader
-	// qDebug() << "program.link() = " << program.link();
-
-	// qDebug() << "program.bind() = " << program.bind();
-
-	// //传递顶点和材质坐标
-	// //顶点
-	// static const GLfloat ver[] = {
-	// 	-1.0f, -1.0f,
-	// 	1.0f, -1.0f,
-	// 	-1.0f, 1.0f,
-	// 	1.0f, 1.0f};
-
-	// //材质
-	// static const GLfloat tex[] = {
-	// 	0.0f, 1.0f,
-	// 	1.0f, 1.0f,
-	// 	0.0f, 0.0f,
-	// 	1.0f, 0.0f};
-
-	// //顶点
-	// glVertexAttribPointer(A_VER, 2, GL_FLOAT, 0, 0, ver);
-	// glEnableVertexAttribArray(A_VER);
-
-	// //材质
-	// glVertexAttribPointer(T_VER, 2, GL_FLOAT, 0, 0, tex);
-	// glEnableVertexAttribArray(T_VER);
-
-	// //从shader获取材质
-	// unis[0] = program.uniformLocation("tex_y");
-	// unis[1] = program.uniformLocation("tex_u");
-	// unis[2] = program.uniformLocation("tex_v");
-
-	// // mux.unlock();
-	// // mux.lock();
-	// this->width = width;
-	// this->height = height;
-	// delete datas[0];
-	// delete datas[1];
-	// delete datas[2];
-
-	// ///分配材质内存空间
-	// datas[0] = new unsigned char[width * height];	  // Y
-	// datas[1] = new unsigned char[width * height / 4]; // U
-	// datas[2] = new unsigned char[width * height / 4]; // V
-
-	// if (texs[0])
-	// {
-	// 	glDeleteTextures(3, texs); // 释放空间
-	// }
-
-	// //创建材质
-	// glGenTextures(3, texs);
-
-	// // Y
-	// glBindTexture(GL_TEXTURE_2D, texs[0]);
-	// //放大过滤，线性插值   GL_NEAREST(效率高，但马赛克严重)  GL_LINEAR
-	// glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	// glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	// //创建材质显卡空间
-	// glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width, height, 0, GL_RED, GL_UNSIGNED_BYTE, 0);
-
-	// // U
-	// glBindTexture(GL_TEXTURE_2D, texs[1]);
-	// //放大过滤，线性插值
-	// glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	// glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	// //创建材质显卡空间
-	// glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width / 2, height / 2, 0, GL_RED, GL_UNSIGNED_BYTE, 0);
-
-	// // V
-	// glBindTexture(GL_TEXTURE_2D, texs[2]);
-	// //放大过滤，线性插值
-	// glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	// glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	// //创建材质显卡空间
-	// glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width / 2, height / 2, 0, GL_RED, GL_UNSIGNED_BYTE, 0);
-
-	// // mux.unlock();
 }
 
 void XOpenGlWidget::drawYUV(XVFrame *pFrame)
@@ -365,26 +314,30 @@ void XOpenGlWidget::drawYUV(XVFrame *pFrame)
 	// 	u = v;
 	// 	v = tmp;
 	// }
-
 	glUseProgram(prog_yuv);
 
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, tex_yuv[0]);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, w, h, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, y);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, w, h, 0, GL_RED, GL_UNSIGNED_BYTE, y);
+	// glTexImage2D 的 format 参数需要制定 data 的格式，如果你的图片是 RGB 三个通道，format 就是 GL_BGR （当然这里的通道顺序也和你加载图片相关），如果你的图片是 RGBA 四个通道，format 就是 GL_BGRA，需要你自己根据你的图片来决定这个 format 的。如果你的图片只有三个通道，但是你告诉 opengl 这是 GL_BGRA 的，那么它就会认为 data 中每 4 个byte 表示一个像素，当然就会发生越界的读取，而导致异常。
+	glGenerateMipmap(GL_TEXTURE_2D);
 	glUniform1i(texUniformY, 0);
 
 	glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D, tex_yuv[1]);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, w / 2, h / 2, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, u);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, w / 2, h / 2, 0, GL_RED, GL_UNSIGNED_BYTE, u);
+	glGenerateMipmap(GL_TEXTURE_2D);
 	glUniform1i(texUniformU, 1);
 
 	glActiveTexture(GL_TEXTURE2);
 	glBindTexture(GL_TEXTURE_2D, tex_yuv[2]);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, w / 2, h / 2, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, v);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, w / 2, h / 2, 0, GL_RED, GL_UNSIGNED_BYTE, v);
+	glGenerateMipmap(GL_TEXTURE_2D);
 	glUniform1i(texUniformV, 2);
 
-	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glBindVertexArray(VAO);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 	glUseProgram(0);
 }
 
@@ -392,43 +345,20 @@ void XOpenGlWidget::paintGL()
 {
 	qDebug() << "paintGL()";
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	if (m_listXVFrame.empty())
-		return;
-	drawYUV(m_listXVFrame.front());
-	m_listXVFrame.pop_front();
-	// // if (feof(fp))
-	// //{
-	// //	fseek(fp, 0, SEEK_SET);
-	// // }
-	// // fread(datas[0], 1, width * height, fp);
-	// // fread(datas[1], 1, width * height / 4, fp);
-	// // fread(datas[2], 1, width * height / 4, fp);
-	// // mux.lock();
-
-	// glActiveTexture(GL_TEXTURE0);
-	// glBindTexture(GL_TEXTURE_2D, texs[0]); // 0层绑定到Y材质
-	// //修改材质内容(复制内存内容)
-	// glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RED, GL_UNSIGNED_BYTE, datas[0]);
-	// //与shader uni遍历关联
-	// glUniform1i(unis[0], 0);
-
-	// glActiveTexture(GL_TEXTURE0 + 1);
-	// glBindTexture(GL_TEXTURE_2D, texs[1]); // 1层绑定到U材质
-	// 									   //修改材质内容(复制内存内容)
-	// glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width / 2, height / 2, GL_RED, GL_UNSIGNED_BYTE, datas[1]);
-	// //与shader uni遍历关联
-	// glUniform1i(unis[1], 1);
-
-	// glActiveTexture(GL_TEXTURE0 + 2);
-	// glBindTexture(GL_TEXTURE_2D, texs[2]); // 2层绑定到V材质
-	// 									   //修改材质内容(复制内存内容)
-	// glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width / 2, height / 2, GL_RED, GL_UNSIGNED_BYTE, datas[2]);
-	// //与shader uni遍历关联
-	// glUniform1i(unis[2], 2);
-
-	// glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-	// // mux.unlock();
+	{
+		if(m_pFrame->data)
+			drawYUV(m_pFrame);
+	}
+	else {
+		m_pFrame = m_listXVFrame.front();
+		m_listXVFrame.pop_front();
+		drawYUV(m_pFrame);
+	}
+	glDisable(GL_DEPTH_TEST);
+	drawText(QPoint(100, 100), time_str.toStdString().c_str(), 12, QColor(255, 0, 0));
+	glEnable(GL_DEPTH_TEST);
 }
 
 void XOpenGlWidget::resizeGL(int width, int height)
@@ -436,4 +366,14 @@ void XOpenGlWidget::resizeGL(int width, int height)
 	// mux.lock();
 	qDebug() << "resizeGL()" << width << " : " << height;
 	// mux.unlock();
+}
+
+#include <QPainter>
+void XOpenGlWidget::drawText(QPoint lb, const char* text, int fontsize, QColor clr) {
+	QPainter painter(this);
+	QFont font = painter.font();
+	font.setPixelSize(20);
+	painter.setFont(font);
+	painter.setPen(clr);
+	painter.drawText(lb, text);
 }

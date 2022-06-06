@@ -67,9 +67,7 @@
 // #include "glut.h"
 
 // #include <Windows.h>
-#define GLEW_STATIC
-#include <GL/glew.h>
-
+#include <glad/glad.h>
 // #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
@@ -117,12 +115,6 @@ GLenum glCheckError_(const char *file, int line)
 }
 #define glCheckError() glCheckError_(__FILE__, __LINE__)
 
-// Select one of the Texture mode (Set '1'):
-#define TEXTURE_DEFAULT 0
-// Rotate the texture
-#define TEXTURE_ROTATE 0
-// Show half of the Texture
-#define TEXTURE_HALF 1
 using namespace std;
 const int screen_w = 800, screen_h = 400;
 const int pixel_w = 1920, pixel_h = 1080;
@@ -148,7 +140,7 @@ void display(void)
 {
     // 4/6 2/6
     unsigned int len = fread(buf, 1, pixel_w * pixel_h * 3 / 2, infile);
-    cout << "read file " << len << endl;
+    // cout << "read file " << len << endl;
     if (len != pixel_w * pixel_h * 3 / 2)
     {
         cout << "read failed " << len << endl;
@@ -162,58 +154,34 @@ void display(void)
     // Y
     //
     // glShadeModel(GL_FLAT);
+    glUseProgram(p);
+    // 注意，查询uniform地址不要求你之前使用过着色器程序，但是更新一个uniform之前你必须先使用程序（调用glUseProgram)，因为它是在当前激活的着色器程序中设置uniform的。
     glActiveTexture(GL_TEXTURE0);
-
     glBindTexture(GL_TEXTURE_2D, id_y);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, pixel_w, pixel_h, 0, GL_RED, GL_UNSIGNED_BYTE, plane[0]);
+    // glTexImage2D 的 format 参数需要制定 data 的格式，如果你的图片是 RGB 三个通道，format 就是 GL_BGR （当然这里的通道顺序也和你加载图片相关），如果你的图片是 RGBA 四个通道，format 就是 GL_BGRA，需要你自己根据你的图片来决定这个 format 的。如果你的图片只有三个通道，但是你告诉 opengl 这是 GL_BGRA 的，那么它就会认为 data 中每 4 个byte 表示一个像素，当然就会发生越界的读取，而导致异常。
+    glGenerateMipmap(GL_TEXTURE_2D);
     glUniform1i(textureUniformY, 0);
     // U
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, id_u);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, pixel_w / 2, pixel_h / 2, 0, GL_RED, GL_UNSIGNED_BYTE, plane[1]);
+    glGenerateMipmap(GL_TEXTURE_2D);
     glUniform1i(textureUniformU, 1);
     // V
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, id_v);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, pixel_w / 2, pixel_h / 2, 0, GL_RED, GL_UNSIGNED_BYTE, plane[2]);
+    glGenerateMipmap(GL_TEXTURE_2D);
     glUniform1i(textureUniformV, 2);
 
-    glUseProgram(p);
-    glBindVertexArray(VAO); // seeing as we only have a single VAO there's no need to bind it every time, but we'll do so to keep things a bit more organized
-    // Draw
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+    glBindVertexArray(VAO);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-    // glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-    // Show
-    // Double
-    // glBindVertexArray(VAO);
-    // glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
     glfwSwapBuffers(window);
-    // Single
-    // glFlush();
-    // glCheckError();
-    // glfwSwapBuffers(window);
-    // SwapBuffers(window);
+    glfwPollEvents();
 }
-
-// void timeFunc(int value)
-// {
-//     display();
-//     // Timer: 40ms
-//     glfwTimerFunc(40, timeFunc, 0);
-// }
-
-// char *textFileRead(char *filename)
-// {
-//     char *s = (char *)malloc(8000);
-//     memset(s, 0, 8000);
-//     FILE *infile = fopen(filename, "rb");
-//     int len = fread(s, 1, 8000, infile);
-//     fclose(infile);
-//     s[len] = 0;
-//     return s;
-// }
-// 自动加引号   b站的源码
-#define GET_STR(x) #x
 // Init Shader
 
 void InitShaders()
@@ -226,7 +194,7 @@ void InitShaders()
         "{\n"
         "    gl_Position = vertexIn;\n"
         "    textureOut = textureIn;\n"
-        "}\n";
+        "}\0";
 
     std::string fsh_str =
         "varying vec2 textureOut;\n"
@@ -244,7 +212,7 @@ void InitShaders()
         "                0,       -0.39465,  2.03211,\n"
         "                1.13983, -0.58060,  0) * yuv;\n"
         "    gl_FragColor = vec4(rgb, 1);\n"
-        "}\n";
+        "}\0";
 
     GLint vertCompiled, fragCompiled, linked;
 
@@ -273,9 +241,6 @@ void InitShaders()
     // Program: Step2
     glAttachShader(p, v);
     glAttachShader(p, f);
-
-    glBindAttribLocation(p, ATTRIB_VERTEX, "vertexIn");
-    glBindAttribLocation(p, ATTRIB_TEXTURE, "textureIn");
     // Program: Step3
     glLinkProgram(p);
     // Debug
@@ -288,14 +253,13 @@ void InitShaders()
     glDeleteShader(v);
     glDeleteShader(f);
     err = glCheckError();
-    // set up vertex data (and buffer(s)) and configure vertex attributes
-    // ------------------------------------------------------------------
+    // opengl 3.3的纹理坐标是左上角0，0， 但是之前雷神博客说的是左下角0，0
     float vertices[] = {
         // positions          // texture coords
-        0.5f, 0.5f, 0.0f, 1.0f, 0.0f,   // top right
-        0.5f, -0.5f, 0.0f, 1.0f, 1.0f,  // bottom right
-        -0.5f, -0.5f, 0.0f, 0.0f, 1.0f, // bottom left
-        -0.5f, 0.5f, 0.0f, 0.0f, 0.0f   // top left
+        1.0f, 1.0f, 0.0f, 1.0f, 0.0f,   // bottom right
+        1.0f, -1.0f, 0.0f, 1.0f, 1.0f,  // top right
+        -1.0f, -1.0f, 0.0f, 0.0f, 1.0f, // bottom left
+        -1.0f, 1.0f, 0.0f, 0.0f, 0.0f   // top left
     };
 
     unsigned int indices[] = {
@@ -322,6 +286,7 @@ void InitShaders()
     // texture coord attribute
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
+
     err = glCheckError();
 
     // Get Uniform Variables Location
@@ -331,40 +296,49 @@ void InitShaders()
     // Init Texture
     glGenTextures(1, &id_y);
     glBindTexture(GL_TEXTURE_2D, id_y);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_LINEAR); // set texture wrapping to GL_REPEAT (default wrapping method)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_LINEAR);
+    //一个常见的错误是，将放大过滤的选项设置为多级渐远纹理过滤选项之一。这样没有任何效果，因为多级渐远纹理主要是使用在纹理被缩小的情况下的：纹理放大不会使用多级渐远纹理，为放大过滤设置多级渐远纹理的选项会产生一个GL_INVALID_ENUM错误代码。
+    //纹理环绕方式 对纹理的默认行为。重复纹理图像。
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    //纹理坐标会被约束在0到1之间，超出的部分会重复纹理坐标的边缘，产生一种边缘被拉伸的效果。
 
     glGenTextures(1, &id_u);
     glBindTexture(GL_TEXTURE_2D, id_u);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_LINEAR); // set texture wrapping to GL_REPEAT (default wrapping method)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_LINEAR);
+
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
     glGenTextures(1, &id_v);
     glBindTexture(GL_TEXTURE_2D, id_v);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_LINEAR); // set texture wrapping to GL_REPEAT (default wrapping method)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_LINEAR);
+
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     err = glCheckError();
 }
 
-//窗口大小变化时，重新设置视口
-void framebuff_size_callback(GLFWwindow *window, int width, int height)
+// process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly
+// ---------------------------------------------------------------------------------------------------------
+void processInput(GLFWwindow *window)
 {
-    glViewport(0, 0, width, height);
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+        glfwSetWindowShouldClose(window, true);
 }
 
-//处理输入
-void process_input_callabck(GLFWwindow *window, int key, int scancode, int action, int mods)
+// glfw: whenever the window size changed (by OS or user resize) this callback function executes
+// ---------------------------------------------------------------------------------------------
+void framebuffer_size_callback(GLFWwindow *window, int width, int height)
 {
-    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
-    {
-        glfwSetWindowShouldClose(window, true);
-    }
+    // make sure the viewport matches the new window dimensions; note that width and
+    // height will be significantly larger than specified on retina displays.
+    glViewport(0, 0, width, height);
 }
 
 int main(int argc, char *argv[])
@@ -403,28 +377,43 @@ int main(int argc, char *argv[])
     }
 
     glfwMakeContextCurrent(window);
-    glfwSetKeyCallback(window, process_input_callabck);
-    glfwSetFramebufferSizeCallback(window, framebuff_size_callback);
+    // glfwSetKeyCallback(window, processInput);
+    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
-    glewExperimental = true; // Needed for core profile
-    if (glewInit() != GLEW_OK)
+    // glad: load all OpenGL function pointers
+    // ---------------------------------------
+    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
     {
+        std::cout << "Failed to initialize GLAD" << std::endl;
         return -1;
     }
+
+    // glewExperimental = true; // Needed for core profile
+    // if (glewInit() != GLEW_OK)
+    // {
+    //     return -1;
+    // }
     err = glGetError();
     fprintf(stderr, "gl error : %d \n", err);
     InitShaders();
     err = glCheckError();
     if (err != GL_NO_ERROR)
         return -1;
-    while (1)
+    while (!glfwWindowShouldClose(window))
     {
+        // input
+        // -----
+        processInput(window);
         display();
         //检查有没有触发什么事件（键盘输入、鼠标移动等)、窗口改变
         glfwPollEvents();
 
         std::this_thread::sleep_for(std::chrono::milliseconds(66));
     }
-
+    glDeleteVertexArrays(1, &VAO);
+    glDeleteBuffers(1, &VBO);
+    glDeleteBuffers(1, &EBO);
+    glDeleteProgram(p);
+    glfwTerminate();
     return 0;
 }
